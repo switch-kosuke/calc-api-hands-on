@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+local.settings.json
+.python_packages/
+__blobstorage__/
+__queuestorage__/
+__azurite_db*__.json
+.vscode/

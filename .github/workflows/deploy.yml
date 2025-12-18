@@ -1,0 +1,80 @@
+name: Build and Test Azure Functions
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies for src
+      run: |
+        cd src
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Install dependencies for tests
+      run: |
+        cd tests
+        pip install -r requirements.txt
+    
+    - name: Run unit tests with coverage
+      run: |
+        cd tests
+        pytest test_multiply.py test_divide.py -v --cov=../src --cov-report=term --cov-report=html
+    
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: tests/htmlcov/
+    
+    - name: Check coverage threshold
+      run: |
+        cd tests
+        pytest test_multiply.py test_divide.py --cov=../src --cov-report=term --cov-fail-under=100
+
+  # TODO: デプロイステップの追加
+  # 以下のステップはシークレット設定が必要なため、コメントアウトしています
+  # シークレット設定後に有効化してください:
+  # - AZURE_FUNCTIONAPP_PUBLISH_PROFILE または
+  # - AZURE_CREDENTIALS (Service Principal)
+  #
+  # deploy:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+  #   
+  #   - name: Set up Python 3.11
+  #     uses: actions/setup-python@v5
+  #     with:
+  #       python-version: '3.11'
+  #   
+  #   - name: Install dependencies
+  #     run: |
+  #       cd src
+  #       python -m pip install --upgrade pip
+  #       pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+  #   
+  #   - name: Deploy to Azure Functions
+  #     uses: Azure/functions-action@v1
+  #     with:
+  #       app-name: '<YOUR_FUNCTION_APP_NAME>'
+  #       package: './src'
+  #       publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
