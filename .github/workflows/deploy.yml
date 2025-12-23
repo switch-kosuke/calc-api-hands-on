@@ -33,7 +33,7 @@ jobs:
     - name: Run unit tests with coverage
       run: |
         cd tests
-        pytest test_multiply.py test_divide.py -v --cov=../src --cov-report=term --cov-report=html
+        pytest test_multiply.py test_divide.py test_utils.py -v --cov=../src --cov-report=term --cov-report=html
     
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
@@ -44,7 +44,7 @@ jobs:
     - name: Check coverage threshold
       run: |
         cd tests
-        pytest test_multiply.py test_divide.py --cov=../src --cov-report=term --cov-fail-under=100
+        pytest test_multiply.py test_divide.py test_utils.py --cov=../src --cov-report=term --cov-fail-under=100
 
   # TODO: デプロイステップの追加
   # 以下のステップはシークレット設定が必要なため、コメントアウトしています
