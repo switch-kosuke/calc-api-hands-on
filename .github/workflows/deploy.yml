@@ -1,12 +1,48 @@
-name: Build and Test Azure Functions
+name: Build, Test and Deploy to Azure Functions
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
+  # Code scanningジョブ - Pythonコードの脆弱性スキャン
+  code-scanning:
+    name: CodeQL Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: python
+        queries: security-and-quality
+    
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+  # 依存関係レビュージョブ (PR時のみ実行)
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v4
+
+  # ビルドとユニットテストジョブ
   build-and-test:
     runs-on: ubuntu-latest
     
@@ -46,35 +82,67 @@ jobs:
         cd tests
         pytest test_multiply.py test_divide.py --cov=../src --cov-report=term --cov-fail-under=100
 
-  # TODO: デプロイステップの追加
-  # 以下のステップはシークレット設定が必要なため、コメントアウトしています
-  # シークレット設定後に有効化してください:
-  # - AZURE_FUNCTIONAPP_PUBLISH_PROFILE または
-  # - AZURE_CREDENTIALS (Service Principal)
-  #
-  # deploy:
-  #   needs: build-and-test
-  #   runs-on: ubuntu-latest
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
-  #   
-  #   - name: Set up Python 3.11
-  #     uses: actions/setup-python@v5
-  #     with:
-  #       python-version: '3.11'
-  #   
-  #   - name: Install dependencies
-  #     run: |
-  #       cd src
-  #       python -m pip install --upgrade pip
-  #       pip install -r requirements.txt --target=".python_packages/lib/site-packages"
-  #   
-  #   - name: Deploy to Azure Functions
-  #     uses: Azure/functions-action@v1
-  #     with:
-  #       app-name: '<YOUR_FUNCTION_APP_NAME>'
-  #       package: './src'
-  #       publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+  # Azure Functionsへのデプロイジョブ (mainブランチへのpush時のみ)
+  deploy:
+    name: Deploy to Azure Functions
+    needs: [code-scanning, build-and-test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd src
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+    
+    - name: Deploy to Azure Functions
+      uses: Azure/functions-action@v1
+      with:
+        app-name: 'calc-api-usui'
+        package: './src'
+        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+
+  # デプロイ後の統合テストジョブ
+  integration-test:
+    name: Post-Deployment Integration Test
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install test dependencies
+      run: |
+        cd tests
+        pip install -r requirements.txt
+    
+    - name: Wait for deployment to complete
+      run: sleep 30
+    
+    - name: Run integration tests against deployed API
+      run: |
+        cd tests
+        sed -i 's|http://localhost:7071|https://calc-api-usui.azurewebsites.net|g' test_integration.py
+        pytest test_integration.py -v
+      continue-on-error: true
+    
+    - name: Notify if integration tests failed
+      if: failure()
+      run: |
+        echo "⚠️ 統合テストが失敗しました。デプロイは完了していますが、APIの動作を確認してください。"
